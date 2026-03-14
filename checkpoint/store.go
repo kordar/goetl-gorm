@@ -2,11 +2,12 @@ package checkpointdb
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"sync"
 	"time"
 
-	"github.com/kordar/go-etl/checkpoint"
+	"github.com/kordar/goetl/checkpoint"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -56,7 +57,7 @@ func (s *Store) Load(ctx context.Context, key string) (string, error) {
 	db := s.DB.WithContext(ctx).Table(s.tableName())
 	err := db.Where("namespace = ? AND key = ?", s.Namespace, key).Take(&row).Error
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if errors.Is(err, gorm.ErrRecordNotFound) || errors.Is(err, sql.ErrNoRows) {
 			return "", checkpoint.ErrNotFound
 		}
 		return "", err

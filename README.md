@@ -19,7 +19,7 @@ goetl-gorm
 
 ## 依赖
 
-- 核心框架：`github.com/kordar/go-etl`
+- 核心框架：`github.com/kordar/goetl`
 - ORM：`gorm.io/gorm`
 
 说明：
@@ -28,7 +28,7 @@ goetl-gorm
 
 ## Source：SQLScanner（自定义 SQL 通用扫描器）
 
-实现见：[sql_scanner.go](file:///d:/Projects/GolangProjects/github.com/ETL/goetl-gorm/source/sql_scanner.go)
+实现见：[sql_scanner.go](source/sql_scanner.go)
 
 你需要提供三件事即可运行：
 
@@ -48,7 +48,7 @@ goetl-gorm
 
 ## Transform：ModelToMap（可选）
 
-实现见：[model_to_map.go](file:///d:/Projects/GolangProjects/github.com/ETL/goetl-gorm/transform/model_to_map.go)
+实现见：[model_to_map.go](transform/model_to_map.go)
 
 用途：
 
@@ -70,19 +70,18 @@ import (
 	"log"
 	"strconv"
 
-	"github.com/kordar/go-etl"
-	"github.com/kordar/go-etl/components/memory"
-	"github.com/kordar/go-etl/engine"
-	"gorm.io/driver/mysql"
+	"github.com/kordar/goetl"
+	"github.com/kordar/goetl/components/memory"
+	"github.com/kordar/goetl/engine"
 	"gorm.io/gorm"
 
-	gormsource "github.com/kordar/go-etl-gorm/source"
+	gormsource "github.com/kordar/goetl-gorm/source"
 )
 
 func main() {
-	db, err := gorm.Open(mysql.Open("dsn"), &gorm.Config{})
-	if err != nil {
-		log.Fatal(err)
+	var db *gorm.DB
+	if db == nil {
+		log.Fatal("init gorm DB first")
 	}
 
 	cp := memory.NewCheckpointStore()
@@ -219,10 +218,9 @@ src := &gormsource.SQLScanner[Cursor]{
 
 ## 测试
 
-断点续扫测试见：[sql_scanner_test.go](file:///d:/Projects/GolangProjects/github.com/ETL/goetl-gorm/source/sql_scanner_test.go)
+断点续扫测试见：[sql_scanner_test.go](source/sql_scanner_test.go)
 
 ```bash
 go test ./...
 go vet ./...
 ```
-

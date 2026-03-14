@@ -2,6 +2,7 @@ package gormsource
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -9,9 +10,12 @@ import (
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
-	"github.com/kordar/go-etl"
-	"github.com/kordar/go-etl/components/memory"
+	etl "github.com/kordar/goetl"
+	"github.com/kordar/goetl/components/memory"
 	"gorm.io/gorm"
+	"gorm.io/gorm/callbacks"
+	"gorm.io/gorm/clause"
+	"gorm.io/gorm/schema"
 )
 
 func TestSQLScanner_Resume_NoLossNoDup(t *testing.T) {
@@ -23,7 +27,16 @@ func TestSQLScanner_Resume_NoLossNoDup(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = sqlDB.Close() })
 
-	var db *gorm.DB
+	db, err := gorm.Open(sqlmockDialector{conn: sqlDB}, &gorm.Config{SkipDefaultTransaction: true, DryRun: false})
+	if err != nil {
+		t.Fatalf("gorm open: %v", err)
+	}
+	db = db.Session(&gorm.Session{DryRun: false})
+	db.ConnPool = sqlDB
+	if db.Statement != nil {
+		db.Statement.ConnPool = sqlDB
+	}
+
 	query := "SELECT id, name FROM sql_users WHERE id > ? ORDER BY id LIMIT 10"
 	queryRe := regexp.QuoteMeta(query)
 
@@ -178,4 +191,55 @@ func TestSQLScanner_Resume_NoLossNoDup(t *testing.T) {
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("sqlmock expectations: %v", err)
 	}
+}
+
+type sqlmockDialector struct {
+	conn *sql.DB
+}
+
+func (d sqlmockDialector) Name() string { return "mysql" }
+
+func (d sqlmockDialector) Initialize(db *gorm.DB) error {
+	db.ConnPool = d.conn
+	if db.Statement == nil {
+		db.Statement = &gorm.Statement{DB: db, ConnPool: d.conn, Context: context.Background()}
+	} else {
+		db.Statement.ConnPool = d.conn
+	}
+	callbacks.RegisterDefaultCallbacks(db, &callbacks.Config{
+		QueryClauses: []string{"SELECT", "FROM", "WHERE", "GROUP BY", "ORDER BY", "LIMIT"},
+	})
+	return nil
+}
+
+func (d sqlmockDialector) Migrator(db *gorm.DB) gorm.Migrator {
+	_ = db
+	return nil
+}
+
+func (d sqlmockDialector) DataTypeOf(field *schema.Field) string {
+	_ = field
+	return ""
+}
+
+func (d sqlmockDialector) DefaultValueOf(field *schema.Field) clause.Expression {
+	_ = field
+	return clause.Expr{}
+}
+
+func (d sqlmockDialector) BindVarTo(w clause.Writer, stmt *gorm.Statement, v any) {
+	_ = stmt
+	_ = v
+	w.WriteByte('?')
+}
+
+func (d sqlmockDialector) QuoteTo(w clause.Writer, str string) {
+	w.WriteByte('`')
+	w.WriteString(str)
+	w.WriteByte('`')
+}
+
+func (d sqlmockDialector) Explain(sql string, vars ...any) string {
+	_ = vars
+	return sql
 }

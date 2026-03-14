@@ -1,10 +1,10 @@
-module github.com/kordar/go-etl-gorm
+module github.com/kordar/goetl-gorm
 
 go 1.22
 
 require (
 	github.com/DATA-DOG/go-sqlmock v1.5.2
-	github.com/kordar/go-etl v0.0.0
+	github.com/kordar/goetl v0.0.0
 	gorm.io/gorm v1.25.12
 )
 
@@ -14,4 +14,4 @@ require (
 	golang.org/x/text v0.14.0 // indirect
 )
 
-replace github.com/kordar/go-etl => ../goetl
+replace github.com/kordar/goetl => ../goetl

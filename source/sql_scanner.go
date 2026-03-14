@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/kordar/go-etl"
-	"github.com/kordar/go-etl/checkpoint"
+	"github.com/kordar/goetl"
+	"github.com/kordar/goetl/checkpoint"
 	"gorm.io/gorm"
 )
 
@@ -75,7 +75,7 @@ func (s *SQLScanner[T]) Name() string {
 	return "gorm_sql_scanner"
 }
 
-func (s *SQLScanner[T]) Start(ctx context.Context, out chan<- etl.Message) error {
+func (s *SQLScanner[T]) Start(ctx context.Context, out chan<- goetl.Message) error {
 	if s.DB == nil {
 		return errors.New("sql scanner requires DB")
 	}
@@ -143,7 +143,7 @@ func (s *SQLScanner[T]) Start(ctx context.Context, out chan<- etl.Message) error
 	}
 }
 
-func (s *SQLScanner[T]) consumeRows(ctx context.Context, rows *sql.Rows, partition string, out chan<- etl.Message, cursor *T) (int, error) {
+func (s *SQLScanner[T]) consumeRows(ctx context.Context, rows *sql.Rows, partition string, out chan<- goetl.Message, cursor *T) (int, error) {
 	cols, err := rows.Columns()
 	if err != nil {
 		return 0, err
@@ -191,15 +191,15 @@ func (s *SQLScanner[T]) consumeRows(ctx context.Context, rows *sql.Rows, partiti
 			return count, err
 		}
 
-		msg := etl.Message{
+		msg := goetl.Message{
 			Partition: partition,
-			Record: &etl.Record{
+			Record: &goetl.Record{
 				ID:        cpValue,
 				Timestamp: time.Now(),
 				Source:    s.Name(),
 				Data:      data,
 			},
-			Checkpoint: &etl.Checkpoint{
+			Checkpoint: &goetl.Checkpoint{
 				Key:   s.CheckpointKey,
 				Value: cpValue,
 			},

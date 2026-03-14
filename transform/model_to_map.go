@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 
-	"github.com/kordar/go-etl"
+	"github.com/kordar/goetl"
 )
 
 type ModelToMap struct {
@@ -14,7 +14,7 @@ type ModelToMap struct {
 
 func (t *ModelToMap) Name() string { return "gorm_model_to_map" }
 
-func (t *ModelToMap) Transform(ctx context.Context, r *etl.Record) (*etl.Record, error) {
+func (t *ModelToMap) Transform(ctx context.Context, r *goetl.Record) (*goetl.Record, error) {
 	_ = ctx
 	if r == nil {
 		return nil, nil
