@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/kordar/goetl/checkpoint"
+	logger "github.com/kordar/gologger"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -21,6 +22,8 @@ type Store struct {
 }
 
 func (s *Store) Save(ctx context.Context, key string, value string) error {
+	logger.Info("=================================")
+	logger.Infof("checkpoint store save: namespace=%s key=%s value=%s", s.Namespace, key, value)
 	if s.DB == nil {
 		return errors.New("checkpoint store requires DB")
 	}
@@ -55,7 +58,7 @@ func (s *Store) Load(ctx context.Context, key string) (string, error) {
 
 	var row checkpointRow
 	db := s.DB.WithContext(ctx).Table(s.tableName())
-	err := db.Where("namespace = ? AND key = ?", s.Namespace, key).Take(&row).Error
+	err := db.Where("namespace = ? AND `key` = ?", s.Namespace, key).Take(&row).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) || errors.Is(err, sql.ErrNoRows) {
 			return "", checkpoint.ErrNotFound

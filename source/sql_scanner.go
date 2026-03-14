@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"runtime/debug"
 	"time"
 
 	"github.com/kordar/goetl"
@@ -219,4 +220,22 @@ func (s *SQLScanner[T]) consumeRows(ctx context.Context, rows *sql.Rows, partiti
 		return count, err
 	}
 	return count, nil
+}
+
+func (s *SQLScanner[T]) safeExtractCursor(row map[string]any) (next T, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("panic in ExtractCursor: %v\n%s", r, debug.Stack())
+		}
+	}()
+	return s.ExtractCursor(row)
+}
+
+func (s *SQLScanner[T]) safeMapRow(row map[string]any) (data map[string]any, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("panic in MapRow: %v\n%s", r, debug.Stack())
+		}
+	}()
+	return s.MapRow(row)
 }

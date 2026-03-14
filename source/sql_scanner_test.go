@@ -3,6 +3,7 @@ package gormsource
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -188,6 +189,66 @@ func TestSQLScanner_Resume_NoLossNoDup(t *testing.T) {
 		t.Fatalf("checkpoint=%s want=%s", v, "100")
 	}
 
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("sqlmock expectations: %v", err)
+	}
+}
+
+func TestSQLScannerTicker_PeriodicScan(t *testing.T) {
+	t.Parallel()
+	sqlDB, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock: %v", err)
+	}
+	t.Cleanup(func() { _ = sqlDB.Close() })
+
+	db, err := gorm.Open(sqlmockDialector{conn: sqlDB}, &gorm.Config{SkipDefaultTransaction: true, DryRun: false})
+	if err != nil {
+		t.Fatalf("gorm open: %v", err)
+	}
+	db = db.Session(&gorm.Session{DryRun: false})
+	db.ConnPool = sqlDB
+	if db.Statement != nil {
+		db.Statement.ConnPool = sqlDB
+	}
+
+	query := "SELECT id FROM t WHERE id > ? ORDER BY id LIMIT 10"
+	queryRe := regexp.QuoteMeta(query)
+	mock.ExpectQuery(queryRe).WithArgs(int64(0)).WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(int64(1)))
+	mock.ExpectQuery(queryRe).WithArgs(int64(1)).WillReturnRows(sqlmock.NewRows([]string{"id"}))
+
+	store := memory.NewCheckpointStore()
+	sc := &SQLScanner[int64]{
+		DB:            db,
+		Store:         store,
+		CheckpointKey: "k",
+		Codec:         Int64CursorCodec{},
+		BuildQuery: func(ctx context.Context, cursor int64) (string, []any, error) {
+			_ = ctx
+			return query, []any{cursor}, nil
+		},
+		ExtractCursor: func(row map[string]any) (int64, error) {
+			return row["id"].(int64), nil
+		},
+	}
+	ticker := &SQLScannerTicker[int64]{Scanner: sc, Interval: time.Hour, StopOnError: true}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	out := make(chan etl.Message, 16)
+	done := make(chan error, 1)
+	go func() { done <- ticker.Start(ctx, out) }()
+
+	msg := <-out
+	if msg.Checkpoint == nil || msg.Checkpoint.Value != "1" {
+		t.Fatalf("checkpoint=%v want value=1", msg.Checkpoint)
+	}
+	_ = store.Save(context.Background(), msg.Checkpoint.Key, msg.Checkpoint.Value)
+
+	cancel()
+	err = <-done
+	if err == nil || !errors.Is(err, context.Canceled) {
+		t.Fatalf("err=%v want context.Canceled", err)
+	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("sqlmock expectations: %v", err)
 	}
