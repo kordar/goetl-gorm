@@ -5,12 +5,8 @@ github.com/jinzhu/inflection v1.0.0/go.mod h1:h+uFLlag+Qp1Va5pdKtLDYj+kHp5pxUVkr
 github.com/jinzhu/now v1.1.5 h1:/o9tlHleP7gOFmsnYNz3RGnqzefHA47wQpKrrdTIwXQ=
 github.com/jinzhu/now v1.1.5/go.mod h1:d3SSVoowX0Lcu0IBviAWJpolVfI5UJVZZ7cO71lE/z8=
 github.com/kisielk/sqlstruct v0.0.0-20201105191214-5f3e10d3ab46/go.mod h1:yyMNCyc/Ib3bDTKd379tNMpB/7/H5TjM2Y9QJ5THLbE=
-github.com/kordar/goetl v0.0.0-20260314032350-9f96d26370f3 h1:c1AzsOBo8+BK9jaYTRYFo9VJJLW6La83ihjmzRwOb4I=
-github.com/kordar/goetl v0.0.0-20260314032350-9f96d26370f3/go.mod h1:1YdbiOR4RuSso5g4ituwDofUIlHjf9KDn/52/D2wZV4=
-github.com/kordar/goetl v0.0.1 h1:3c7f2YJ/8M6adrXnF9FKv7/XZLUhbjroK5Fo3viwdU0=
-github.com/kordar/goetl v0.0.1/go.mod h1:1YdbiOR4RuSso5g4ituwDofUIlHjf9KDn/52/D2wZV4=
-github.com/kordar/gologger v0.0.8 h1:bpbxxOagkXp7TKREji61FrwVljf5X56yvedQsWNVe28=
-github.com/kordar/gologger v0.0.8/go.mod h1:hJF0BnPeo/QSJalJBF0eOG362WHez/Uc5SurSd5cdEo=
+github.com/kordar/goetl v0.0.2 h1:5zzRqMdFV9Q7rGnLpBiiK7qRkbmKB2DcaZeT9RGkJVU=
+github.com/kordar/goetl v0.0.2/go.mod h1:1YdbiOR4RuSso5g4ituwDofUIlHjf9KDn/52/D2wZV4=
 golang.org/x/text v0.14.0 h1:ScX5w1eTa3QqT8oi6+ziP7dTV1S2+ALU0bI+0zXKWiQ=
 golang.org/x/text v0.14.0/go.mod h1:18ZOQIKpY8NJVqYksKHtTdi31H5itFRjB5/qKTNYzSU=
 gorm.io/gorm v1.25.12 h1:I0u8i2hWQItBq1WfE0o2+WuL9+8L21K9e2HHSTE/0f8=
