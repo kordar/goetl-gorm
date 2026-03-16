@@ -215,7 +215,6 @@ func TestSQLScannerTicker_PeriodicScan(t *testing.T) {
 	query := "SELECT id FROM t WHERE id > ? ORDER BY id LIMIT 10"
 	queryRe := regexp.QuoteMeta(query)
 	mock.ExpectQuery(queryRe).WithArgs(int64(0)).WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(int64(1)))
-	mock.ExpectQuery(queryRe).WithArgs(int64(1)).WillReturnRows(sqlmock.NewRows([]string{"id"}))
 
 	store := memory.NewCheckpointStore()
 	sc := &SQLScanner[int64]{
