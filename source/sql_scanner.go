@@ -54,6 +54,7 @@ func (TimeCursorCodec) Zero() time.Time { return time.Time{} }
 type QueryBuilder[T any] func(ctx context.Context, cursor T) (query string, args []any, err error)
 type CursorExtractor[T any] func(row map[string]any) (T, error)
 type RowMapper func(row map[string]any) (map[string]any, error)
+type ExtsBuilder func(row map[string]any) (map[string]any, error)
 
 type SQLScanner[T any] struct {
 	DB            *gorm.DB
@@ -67,6 +68,7 @@ type SQLScanner[T any] struct {
 	BuildQuery    QueryBuilder[T]
 	ExtractCursor CursorExtractor[T]
 	MapRow        RowMapper
+	BuildExts     ExtsBuilder
 }
 
 func (s *SQLScanner[T]) Name() string {
@@ -178,7 +180,7 @@ func (s *SQLScanner[T]) consumeRows(ctx context.Context, rows *sql.Rows, partiti
 			}
 		}
 
-		next, err := s.ExtractCursor(row)
+		next, err := s.safeExtractCursor(row)
 		if err != nil {
 			return count, err
 		}
@@ -187,9 +189,17 @@ func (s *SQLScanner[T]) consumeRows(ctx context.Context, rows *sql.Rows, partiti
 			return count, err
 		}
 
-		data, err := s.MapRow(row)
+		data, err := s.safeMapRow(row)
 		if err != nil {
 			return count, err
+		}
+
+		var exts map[string]any
+		if s.BuildExts != nil {
+			exts, err = s.safeBuildExts(row)
+			if err != nil {
+				return count, err
+			}
 		}
 
 		msg := goetl.Message{
@@ -199,6 +209,7 @@ func (s *SQLScanner[T]) consumeRows(ctx context.Context, rows *sql.Rows, partiti
 				Timestamp: time.Now(),
 				Source:    s.Name(),
 				Data:      data,
+				Exts:      exts,
 			},
 			Checkpoint: &goetl.Checkpoint{
 				Key:   s.CheckpointKey,
@@ -238,4 +249,13 @@ func (s *SQLScanner[T]) safeMapRow(row map[string]any) (data map[string]any, err
 		}
 	}()
 	return s.MapRow(row)
+}
+
+func (s *SQLScanner[T]) safeBuildExts(row map[string]any) (exts map[string]any, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("panic in BuildExts: %v\n%s", r, debug.Stack())
+		}
+	}()
+	return s.BuildExts(row)
 }

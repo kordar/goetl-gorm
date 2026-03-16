@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/kordar/goetl/checkpoint"
-	logger "github.com/kordar/gologger"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -22,8 +21,6 @@ type Store struct {
 }
 
 func (s *Store) Save(ctx context.Context, key string, value string) error {
-	logger.Info("=================================")
-	logger.Infof("checkpoint store save: namespace=%s key=%s value=%s", s.Namespace, key, value)
 	if s.DB == nil {
 		return errors.New("checkpoint store requires DB")
 	}
