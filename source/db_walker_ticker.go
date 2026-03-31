@@ -8,8 +8,8 @@ import (
 	"github.com/kordar/goetl"
 )
 
-func NewSQLScannerTicker[T any](scanner *SQLScanner[T], interval, retryInterval time.Duration, stopOnError bool) *SQLScannerTicker[T] {
-	return &SQLScannerTicker[T]{
+func NewDBWalkerTicker(scanner *DBWalker, interval, retryInterval time.Duration, stopOnError bool) *DBWalkerTicker {
+	return &DBWalkerTicker{
 		Scanner:       scanner,
 		Interval:      interval,
 		RetryInterval: retryInterval,
@@ -17,23 +17,23 @@ func NewSQLScannerTicker[T any](scanner *SQLScanner[T], interval, retryInterval 
 	}
 }
 
-type SQLScannerTicker[T any] struct {
-	Scanner       *SQLScanner[T]
+type DBWalkerTicker struct {
+	Scanner       *DBWalker
 	Interval      time.Duration
 	RetryInterval time.Duration
 	StopOnError   bool
 }
 
-func (t *SQLScannerTicker[T]) Name() string {
+func (t *DBWalkerTicker) Name() string {
 	if t.Scanner != nil {
 		return t.Scanner.Name()
 	}
-	return "gorm_sql_scanner_ticker"
+	return "gorm_db_walker_ticker"
 }
 
-func (t *SQLScannerTicker[T]) Start(ctx context.Context, out chan<- goetl.Message) error {
+func (t *DBWalkerTicker) Start(ctx context.Context, out chan<- goetl.Message) error {
 	if t.Scanner == nil {
-		return errors.New("sql scanner ticker requires Scanner")
+		return errors.New("db walker ticker requires Scanner")
 	}
 	interval := t.Interval
 	if interval <= 0 {
@@ -45,10 +45,8 @@ func (t *SQLScannerTicker[T]) Start(ctx context.Context, out chan<- goetl.Messag
 	}
 
 	for {
-		select {
-		case <-ctx.Done():
+		if ctx.Err() != nil {
 			return ctx.Err()
-		default:
 		}
 
 		err := t.Scanner.Start(ctx, out)
@@ -84,3 +82,4 @@ func sleepCtx(ctx context.Context, d time.Duration) error {
 		return nil
 	}
 }
+

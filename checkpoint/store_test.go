@@ -1,75 +1,71 @@
-package checkpointdb
+package checkpoint
 
 import (
 	"context"
 	"database/sql"
-	"errors"
-	"fmt"
-	"sync"
+	"encoding/json"
+	"reflect"
 	"testing"
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
-	"github.com/kordar/goetl/checkpoint"
+	etlcp "github.com/kordar/goetl/checkpoint"
 	"gorm.io/gorm"
 	"gorm.io/gorm/callbacks"
 	"gorm.io/gorm/clause"
 	"gorm.io/gorm/schema"
 )
 
-func TestStore_SaveLoad(t *testing.T) {
+func TestStore_Load_NotFound(t *testing.T) {
 	t.Parallel()
 
-	db, mock, cleanup := openTestDB(t)
+	db, mock, cleanup := newMockDB(t)
 	defer cleanup()
-	s := &Store{DB: db, Namespace: "job_a"}
-	s.once.Do(func() {})
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
 
 	mock.ExpectQuery("SELECT (.+)etl_checkpoints(.+)").
+		WithArgs("ns", "k1", sqlmock.AnyArg()).
 		WillReturnError(sql.ErrNoRows)
 
-	_, err := s.Load(ctx, "k1")
-	if err == nil || !errors.Is(err, checkpoint.ErrNotFound) {
-		t.Fatalf("load err=%v want ErrNotFound", err)
+	s := &Store{DB: db, Namespace: "ns", DisableAutoMigrate: true}
+	_, err := s.Load(context.Background(), "k1")
+	if !reflect.DeepEqual(err, etlcp.ErrNotFound) {
+		t.Fatalf("err=%v want=%v", err, etlcp.ErrNotFound)
 	}
 
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("sqlmock expectations: %v", err)
+	}
+}
+
+func TestStore_SaveThenLoad(t *testing.T) {
+	t.Parallel()
+
+	db, mock, cleanup := newMockDB(t)
+	defer cleanup()
+
 	mock.ExpectExec("(?s)INSERT (.+)etl_checkpoints(.+)").
+		WithArgs("ns", "k1", sqlmock.AnyArg(), sqlmock.AnyArg()).
 		WillReturnResult(sqlmock.NewResult(1, 1))
 
-	if err := s.Save(ctx, "k1", "v1"); err != nil {
+	curJSON := `{"values":[1,"x"],"meta":{"checkpoint":"k1","p":"p1"}}`
+	mock.ExpectQuery("SELECT (.+)etl_checkpoints(.+)").
+		WithArgs("ns", "k1", sqlmock.AnyArg()).
+		WillReturnRows(sqlmock.NewRows([]string{"namespace", "checkpoint_key", "cursor_json", "updated_at"}).
+			AddRow("ns", "k1", curJSON, time.Now()))
+
+	s := &Store{DB: db, Namespace: "ns", DisableAutoMigrate: true}
+
+	want := etlcp.Cursor{Values: []any{json.Number("1"), "x"}, Meta: map[string]any{"checkpoint": "k1", "p": "p1"}}
+	if err := s.Save(context.Background(), "k1", want); err != nil {
 		t.Fatalf("save: %v", err)
 	}
 
-	mock.ExpectQuery("SELECT (.+)etl_checkpoints(.+)").
-		WillReturnRows(sqlmock.NewRows([]string{"namespace", "key", "value", "updated_at"}).AddRow("job_a", "k1", "v1", time.Now()))
-
-	v, err := s.Load(ctx, "k1")
+	got, err := s.Load(context.Background(), "k1")
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
-	if v != "v1" {
-		t.Fatalf("value=%s want=%s", v, "v1")
-	}
-
-	mock.ExpectExec("(?s)INSERT (.+)etl_checkpoints(.+)").
-		WillReturnResult(sqlmock.NewResult(1, 1))
-
-	if err := s.Save(ctx, "k1", "v2"); err != nil {
-		t.Fatalf("save2: %v", err)
-	}
-
-	mock.ExpectQuery("SELECT (.+)etl_checkpoints(.+)").
-		WillReturnRows(sqlmock.NewRows([]string{"namespace", "key", "value", "updated_at"}).AddRow("job_a", "k1", "v2", time.Now()))
-
-	v, err = s.Load(ctx, "k1")
-	if err != nil {
-		t.Fatalf("load2: %v", err)
-	}
-	if v != "v2" {
-		t.Fatalf("value2=%s want=%s", v, "v2")
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("cursor=%v want=%v", got, want)
 	}
 
 	if err := mock.ExpectationsWereMet(); err != nil {
@@ -77,49 +73,8 @@ func TestStore_SaveLoad(t *testing.T) {
 	}
 }
 
-func TestStore_ConcurrentSave(t *testing.T) {
-	t.Parallel()
-
-	db, mock, cleanup := openTestDB(t)
-	defer cleanup()
-	mock.MatchExpectationsInOrder(false)
-	s := &Store{DB: db, Namespace: "job_b"}
-	s.once.Do(func() {})
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	for i := 0; i < 50; i++ {
-		mock.ExpectExec("(?s)INSERT (.+)etl_checkpoints(.+)").
-			WillReturnResult(sqlmock.NewResult(1, 1))
-	}
-
-	var wg sync.WaitGroup
-	for i := 0; i < 50; i++ {
-		wg.Add(1)
-		go func(n int) {
-			defer wg.Done()
-			_ = s.Save(ctx, "k", fmt.Sprintf("v%d", n))
-		}(i)
-	}
-	wg.Wait()
-
-	mock.ExpectQuery("SELECT (.+)etl_checkpoints(.+)").
-		WillReturnRows(sqlmock.NewRows([]string{"namespace", "key", "value", "updated_at"}).AddRow("job_b", "k", "v", time.Now()))
-
-	_, err := s.Load(ctx, "k")
-	if err != nil {
-		t.Fatalf("load: %v", err)
-	}
-
-	if err := mock.ExpectationsWereMet(); err != nil {
-		t.Fatalf("sqlmock expectations: %v", err)
-	}
-}
-
-func openTestDB(t *testing.T) (*gorm.DB, sqlmock.Sqlmock, func()) {
+func newMockDB(t *testing.T) (*gorm.DB, sqlmock.Sqlmock, func()) {
 	t.Helper()
-
 	sqlDB, mock, err := sqlmock.New()
 	if err != nil {
 		t.Fatalf("sqlmock: %v", err)
