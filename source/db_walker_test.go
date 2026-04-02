@@ -132,7 +132,6 @@ func TestDBWalker_SQL_MaxItems(t *testing.T) {
 			return checkpoint.Cursor{Values: []any{id}}, nil
 		},
 		BuildAck: func(row map[string]any, cur checkpoint.Cursor) (string, error) {
-			_ = cur
 			return fmt.Sprintf("%d", row["id"].(int64)), nil
 		},
 	}
