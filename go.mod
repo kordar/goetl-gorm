@@ -4,13 +4,15 @@ go 1.22
 
 require (
 	github.com/DATA-DOG/go-sqlmock v1.5.2
-	github.com/kordar/goetl v0.1.0
+	github.com/go-sql-driver/mysql v1.7.0
+	github.com/kordar/goetl v0.1.1
+	gorm.io/driver/mysql v1.5.7
 	gorm.io/gorm v1.25.12
 )
 
-replace (
-	github.com/kordar/goetl => ../goetl
-)
+// replace (
+// 	github.com/kordar/goetl => ../goetl
+// )
 
 require (
 	github.com/jinzhu/inflection v1.0.0 // indirect

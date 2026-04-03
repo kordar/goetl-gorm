@@ -15,12 +15,15 @@ import (
 )
 
 type Store struct {
-	DB          *gorm.DB
-	TableName   string
-	Namespace   string
+	DB                 *gorm.DB
+	TableName          string
+	Namespace          string
 	DisableAutoMigrate bool
+	UseCache           bool
 
-	once sync.Once
+	once    sync.Once
+	cacheMu sync.RWMutex
+	cache   map[string]etlcp.Cursor
 }
 
 func (s *Store) Save(ctx context.Context, key string, cursor etlcp.Cursor) error {
@@ -47,16 +50,30 @@ func (s *Store) Save(ctx context.Context, key string, cursor etlcp.Cursor) error
 	}
 
 	db := s.DB.WithContext(ctx).Table(s.tableName())
-	return db.Clauses(clause.OnConflict{
+	if err := db.Clauses(clause.OnConflict{
 		Columns: []clause.Column{
 			{Name: "namespace"},
 			{Name: "checkpoint_key"},
 		},
 		DoUpdates: clause.AssignmentColumns([]string{"cursor_json", "updated_at"}),
-	}).Create(&row).Error
+	}).Create(&row).Error; err != nil {
+		return err
+	}
+	return nil
 }
 
 func (s *Store) Load(ctx context.Context, key string) (etlcp.Cursor, error) {
+	if s.UseCache {
+		s.cacheMu.RLock()
+		if s.cache != nil {
+			if cur, ok := s.cache[key]; ok {
+				s.cacheMu.RUnlock()
+				return cur, nil
+			}
+		}
+		s.cacheMu.RUnlock()
+	}
+
 	if s.DB == nil {
 		return etlcp.Cursor{}, errors.New("checkpoint store requires DB")
 	}
@@ -84,6 +101,14 @@ func (s *Store) Load(ctx context.Context, key string) (etlcp.Cursor, error) {
 		if err := dec.Decode(&cur); err != nil {
 			return etlcp.Cursor{}, err
 		}
+	}
+	if s.UseCache {
+		s.cacheMu.Lock()
+		if s.cache == nil {
+			s.cache = map[string]etlcp.Cursor{}
+		}
+		s.cache[key] = cur
+		s.cacheMu.Unlock()
 	}
 	return cur, nil
 }
