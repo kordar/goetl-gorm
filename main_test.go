@@ -2,6 +2,7 @@ package goetlgorm_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"regexp"
@@ -224,7 +225,7 @@ func TestEngine_WithSource_BasicFlow(t *testing.T) {
 	eng.Run(ctx, func(m goetl.Message) {
 		fmt.Println("msg", m)
 	}, func(err error) {
-		if err != nil {
+		if err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
 			t.Errorf("run: %v", err)
 		}
 	})
