@@ -71,6 +71,7 @@ func (s *DBWalker) Start(ctx context.Context, out chan<- goetl.Message) error {
 	cur := checkpoint.Cursor{}
 	if s.Store != nil {
 		v, err := s.Store.Load(ctx, s.CheckpointKey)
+		fmt.Printf("load checkpoint: %v\n", v)
 		if err == nil {
 			cur = v
 		}
@@ -100,6 +101,7 @@ func (s *DBWalker) Start(ctx context.Context, out chan<- goetl.Message) error {
 		if err != nil {
 			return err
 		}
+		fmt.Printf("query: %s, args: %v\n", query, args)
 		rows, err := s.queryRows(ctx, query, args...)
 		if err != nil {
 			return err

@@ -19,11 +19,7 @@ type Store struct {
 	TableName          string
 	Namespace          string
 	DisableAutoMigrate bool
-	UseCache           bool
-
-	once    sync.Once
-	cacheMu sync.RWMutex
-	cache   map[string]etlcp.Cursor
+	once               sync.Once
 }
 
 func (s *Store) Save(ctx context.Context, key string, cursor etlcp.Cursor) error {
@@ -63,17 +59,6 @@ func (s *Store) Save(ctx context.Context, key string, cursor etlcp.Cursor) error
 }
 
 func (s *Store) Load(ctx context.Context, key string) (etlcp.Cursor, error) {
-	if s.UseCache {
-		s.cacheMu.RLock()
-		if s.cache != nil {
-			if cur, ok := s.cache[key]; ok {
-				s.cacheMu.RUnlock()
-				return cur, nil
-			}
-		}
-		s.cacheMu.RUnlock()
-	}
-
 	if s.DB == nil {
 		return etlcp.Cursor{}, errors.New("checkpoint store requires DB")
 	}
@@ -101,14 +86,6 @@ func (s *Store) Load(ctx context.Context, key string) (etlcp.Cursor, error) {
 		if err := dec.Decode(&cur); err != nil {
 			return etlcp.Cursor{}, err
 		}
-	}
-	if s.UseCache {
-		s.cacheMu.Lock()
-		if s.cache == nil {
-			s.cache = map[string]etlcp.Cursor{}
-		}
-		s.cache[key] = cur
-		s.cacheMu.Unlock()
 	}
 	return cur, nil
 }

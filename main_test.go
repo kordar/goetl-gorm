@@ -3,20 +3,22 @@ package goetlgorm_test
 import (
 	"context"
 	"fmt"
-	"os"
 	"regexp"
 	"sync"
 	"testing"
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
+	"github.com/spf13/cast"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/kordar/goetl"
+	"github.com/kordar/goetl-gorm/ack"
 	checkpoint2 "github.com/kordar/goetl-gorm/checkpoint"
 	gormsource "github.com/kordar/goetl-gorm/source"
 	"github.com/kordar/goetl/checkpoint"
 	sinkdispatcher "github.com/kordar/goetl/dispatcher/sink"
+	workpooldispatcher "github.com/kordar/goetl/dispatcher/workpool"
 	"github.com/kordar/goetl/engine"
 	gormmysql "gorm.io/driver/mysql"
 	"gorm.io/gorm"
@@ -31,7 +33,8 @@ type memSink struct {
 func TestEngine_WithSource_DBEnv(t *testing.T) {
 	t.Parallel()
 
-	dsn := os.Getenv("DB_DSN")
+	// dsn := os.Getenv("DB_DSN")
+	dsn := "root:yunpengai.306@tcp(43.139.223.7:33306)/vehicle_dispatch?charset=utf8mb4&parseTime=True&loc=Local"
 
 	if dsn == "" {
 		t.Skip("DB_DSN is not set")
@@ -47,23 +50,20 @@ func TestEngine_WithSource_DBEnv(t *testing.T) {
 		t.Cleanup(func() { _ = sqlDB.Close() })
 	}
 
-	checkpointStore := &checkpoint2.Store{DB: gdb, UseCache: true}
+	checkpointStore := &checkpoint2.Store{DB: gdb, Namespace: "AAAA"}
 
 	w := &gormsource.DBWalker{
 		Gorm:          gdb,
-		CheckpointKey: "test:db",
+		CheckpointKey: "test:db2233",
 		Store:         checkpointStore,
 		PageSize:      2,
 		MaxItems:      50,
 		BuildQuery: func(ctx context.Context, cur checkpoint.Cursor, limit int) (string, []any, error) {
+			fmt.Printf("build query: %v\n", cur)
+
 			var last int64
 			if len(cur.Values) > 0 {
-				switch v := cur.Values[0].(type) {
-				case int64:
-					last = v
-				case int:
-					last = int64(v)
-				}
+				last = cast.ToInt64(cur.Values[0])
 			}
 			return query, []any{last, limit}, nil
 		},
@@ -71,36 +71,62 @@ func TestEngine_WithSource_DBEnv(t *testing.T) {
 			id := row["id"].(int64)
 			return checkpoint.Cursor{Values: []any{id}}, nil
 		},
-		// ExtractCursor: func(row map[string]any) (checkpoint.Cursor, error) {
-		// 	// 默认按 id 字段推进
-		// 	id, ok := row["id"]
-		// 	if !ok {
-		// 		return checkpoint.Cursor{}, fmt.Errorf("no id field in row: %#v", row)
-		// 	}
-		// 	switch v := id.(type) {
-		// 	case int64:
-		// 		return checkpoint.Cursor{Values: []any{v}}, nil
-		// 	case int:
-		// 		return checkpoint.Cursor{Values: []any{int64(v)}}, nil
-		// 	case string:
-		// 		return checkpoint.Cursor{Values: []any{v}}, nil
-		// 	default:
-		// 		return checkpoint.Cursor{Values: []any{v}}, nil
-		// 	}
-		// },
 	}
 
-	ms := &memSink{}
-	d := sinkdispatcher.NewBatchSinkDispatcher(ms).
-		WithBatchSize(10).
-		WithFlushInterval(1 * time.Second).
-		WithQueueBuffer(100).
-		WithBlocking(true)
+	ms := &memSink{checkpoint: checkpointStore}
+
+	// d := sinkdispatcher.NewBatchSinkDispatcher(ms).
+	// 	WithBatchSize(10).
+	// 	WithFlushInterval(1 * time.Second).
+	// 	WithQueueBuffer(100).
+	// 	WithDeliverFinishCallback(func(ctx context.Context, msg ...goetl.Message) error {
+	// 		// fmt.Printf("deliver finish: %v\n", msg)
+	// 		m := msg[0]
+	// 		mm := cast.ToStringMap(m.Record.Data)
+
+	// 		// 保存checkpoint
+	// 		_ = ms.checkpoint.Save(ctx, m.Checkpoint, checkpoint.Cursor{Values: []any{mm["id"].(int64)}})
+	// 		return nil
+	// 	}).
+	// 	WithBlocking(true)
+
+	th := workpooldispatcher.NewTaskHandle(2, 32)
+	th.AddTask("t", func(ctx context.Context, msg goetl.Message) error {
+		// fmt.Println("========", msg.Record)
+		return nil
+	})
+	d := &workpooldispatcher.WorkpoolDispatcher{
+		TH: th,
+		TaskIDFunc: func(msg goetl.Message) string {
+			return "t"
+		},
+	}
+
+	tracker := ack.NewTracker(func(old, new *checkpoint.Cursor) *checkpoint.Cursor {
+		newId := cast.ToInt64(new.Values[0])
+		oldId := cast.ToInt64(old.Values[0])
+		if newId > oldId {
+			return new
+		}
+		return old
+	})
+
+	d.WithDeliverFinishCallback(func(ctx context.Context, msg ...goetl.Message) error {
+		for _, m := range msg {
+			tracker.Add(m.Checkpoint, &m.Cursor)
+		}
+		// 保存checkpoint
+		cursors := tracker.Commit()
+		for partition, cursor := range cursors {
+			_ = ms.checkpoint.Save(ctx, partition, *cursor)
+		}
+		return nil
+	})
 
 	tk := gormsource.NewDBWalkerTicker(w, 2*time.Second, 2*time.Second, true)
 	eng := engine.NewEngine().WithSource(tk).WithDispatcher(d)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
 	outCh, errCh := eng.Start(ctx)
@@ -128,19 +154,20 @@ loop:
 func (s *memSink) Name() string { return "mem" }
 
 func (s *memSink) WriteBatch(ctx context.Context, messages []goetl.Message) error {
-	fmt.Println("==========start write batch")
-	for _, msg := range messages {
-		fmt.Printf("msg=%#v\n, record=%+v\n", msg, msg.Record)
-	}
-	fmt.Println("==========end write batch")
+	// fmt.Println("==========start write batch")
+	// for _, msg := range messages {
+	// 	fmt.Printf("msg=%#v\n, record=%+v\n", msg, msg.Record)
+	// }
+	// fmt.Println("==========end write batch")
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	cp := make([]goetl.Message, len(messages))
 	copy(cp, messages)
 	s.batches = append(s.batches, cp)
-	if s.checkpoint != nil {
-		_ = s.checkpoint.Save(ctx, s.Name(), checkpoint.Cursor{Values: []any{len(s.batches)}})
-	}
+	// if s.checkpoint != nil {
+	// 	_ = s.checkpoint.Save(ctx, s.Name(), checkpoint.Cursor{Values: []any{len(s.batches)}})
+	// }
 	return nil
 }
 
