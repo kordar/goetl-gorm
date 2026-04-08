@@ -92,7 +92,6 @@ func TestEngine_WithSource_DBEnv(t *testing.T) {
 
 	th := workpooldispatcher.NewTaskHandle(2, 32)
 	th.AddTask("t", func(ctx context.Context, msg goetl.Message) error {
-		// fmt.Println("========", msg.Record)
 		return nil
 	})
 	d := &workpooldispatcher.WorkpoolDispatcher{
@@ -103,9 +102,9 @@ func TestEngine_WithSource_DBEnv(t *testing.T) {
 	}
 
 	tracker := ack.NewTracker(func(old, new *checkpoint.Cursor) *checkpoint.Cursor {
-		newId := cast.ToInt64(new.Values[0])
-		oldId := cast.ToInt64(old.Values[0])
-		if newId > oldId {
+		newID := cast.ToInt64(new.Values[0])
+		oldID := cast.ToInt64(old.Values[0])
+		if newID > oldID {
 			return new
 		}
 		return old
