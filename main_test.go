@@ -3,6 +3,7 @@ package goetlgorm_test
 import (
 	"context"
 	"fmt"
+	"os"
 	"regexp"
 	"sync"
 	"testing"
@@ -33,8 +34,7 @@ type memSink struct {
 func TestEngine_WithSource_DBEnv(t *testing.T) {
 	t.Parallel()
 
-	// dsn := os.Getenv("DB_DSN")
-	dsn := "root:yunpengai.306@tcp(43.139.223.7:33306)/vehicle_dispatch?charset=utf8mb4&parseTime=True&loc=Local"
+	dsn := os.Getenv("DB_DSN")
 
 	if dsn == "" {
 		t.Skip("DB_DSN is not set")
